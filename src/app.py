@@ -11,10 +11,66 @@ st.set_page_config(page_title="NIFTY 100 Governance Risk", page_icon="⚖️", l
 
 st.markdown("""
 <style>
-.block-container{padding-top:1.2rem;padding-bottom:2rem}
-.hero{padding:24px;border-radius:18px;background:linear-gradient(135deg,#0f172a,#1e3a8a);color:white;margin-bottom:18px}
-.hero h1{margin:0;font-size:2.15rem}.hero p{margin:.35rem 0 0;color:#dbeafe}
-[data-testid="stSidebar"]{border-right:1px solid #e2e8f0}
+/* Professional soft-light background */
+.stApp {
+    background: #f5f7fb;
+    color: #172033;
+}
+.main .block-container {
+    max-width: 1450px;
+    padding-top: 1.4rem;
+    padding-bottom: 2.5rem;
+}
+[data-testid="stHeader"] {
+    background: rgba(245,247,251,0.92);
+}
+[data-testid="stSidebar"] {
+    background: #eef2f7;
+    border-right: 1px solid #dbe3ee;
+}
+[data-testid="stSidebar"] > div:first-child {
+    background: #eef2f7;
+}
+.hero {
+    padding: 26px 28px;
+    border-radius: 20px;
+    background: linear-gradient(135deg,#12213d 0%,#183d6b 55%,#1d5fa7 100%);
+    color: white;
+    margin-bottom: 22px;
+    box-shadow: 0 10px 30px rgba(18,33,61,.14);
+}
+.hero h1 { margin:0; font-size:2.2rem; letter-spacing:-.02em; }
+.hero p { margin:.45rem 0 0; color:#dbeafe; font-size:1rem; }
+.metric-card {
+    background: #ffffff;
+    border: 1px solid #e1e7f0;
+    border-radius: 16px;
+    padding: 14px 16px;
+    box-shadow: 0 6px 20px rgba(23,32,51,.06);
+}
+.stMetric {
+    background: #ffffff;
+    border: 1px solid #e1e7f0;
+    border-radius: 16px;
+    padding: 8px 12px;
+    box-shadow: 0 6px 20px rgba(23,32,51,.05);
+}
+[data-testid="stDataFrame"] {
+    border: 1px solid #dfe6ef;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #ffffff;
+}
+.stPlotlyChart {
+    background: #ffffff;
+    border: 1px solid #e1e7f0;
+    border-radius: 16px;
+    padding: 4px;
+    box-shadow: 0 6px 20px rgba(23,32,51,.05);
+}
+button[kind="secondary"] {
+    border-radius: 10px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -86,6 +142,7 @@ with a:
     if len(complete):
         rc=filtered["Risk_Level"].value_counts().rename_axis("Risk Level").reset_index(name="Companies")
         fig=px.pie(rc,names="Risk Level",values="Companies",hole=.58,title="Risk classification")
+        fig.update_layout(paper_bgcolor="#ffffff",plot_bgcolor="#ffffff")
         st.plotly_chart(fig,use_container_width=True)
     else: st.info("No completed scores match the current filters.")
 with b:
@@ -93,13 +150,13 @@ with b:
         top=complete.sort_values("Governance_Score",ascending=False).head(10)
         fig=px.bar(top.sort_values("Governance_Score"),x="Governance_Score",y="Company",orientation="h",text="Governance_Score",title="Top 10 governance scores")
         fig.update_traces(textposition="outside")
-        fig.update_layout(xaxis_title="Score",yaxis_title="")
+        fig.update_layout(xaxis_title="Score",yaxis_title="",paper_bgcolor="#ffffff",plot_bgcolor="#ffffff")
         st.plotly_chart(fig,use_container_width=True)
 
 if "Industry" in filtered and len(complete):
     sector=complete.groupby("Industry",dropna=False)["Governance_Score"].mean().reset_index().sort_values("Governance_Score")
     fig=px.bar(sector,x="Governance_Score",y="Industry",orientation="h",text_auto=".1f",title="Average governance score by industry")
-    fig.update_layout(xaxis_title="Average score",yaxis_title="")
+    fig.update_layout(xaxis_title="Average score",yaxis_title="",paper_bgcolor="#ffffff",plot_bgcolor="#ffffff")
     st.plotly_chart(fig,use_container_width=True)
 
 st.subheader("NIFTY 100 governance ranking")
