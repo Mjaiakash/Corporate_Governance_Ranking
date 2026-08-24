@@ -1,9 +1,21 @@
-# Corporate Governance Risk Score — Nifty 100
+# GovernX AI — Corporate Governance Intelligence Platform
 
-A research project that ranks Nifty 100 companies using a transparent Corporate Governance Risk Score (CGRS).
+A content-led NIFTY 100 corporate governance analytics application built with Streamlit, Pandas and Plotly.
 
-## Framework
+## Features
+- Governance research landing page with corporate imagery
+- 100-point scoring framework
+- Searchable company explorer
+- Risk and industry filters
+- Score range filter
+- Governance KPI cards
+- Risk classification chart
+- Top 10 governance ranking
+- Industry-level comparison
+- CSV download
+- Streamlit Cloud deployment ready
 
+## Scoring framework
 | Factor | Weight |
 |---|---:|
 | Promoter pledge | 30 |
@@ -12,29 +24,20 @@ A research project that ranks Nifty 100 companies using a transparent Corporate 
 | Independent directors | 15 |
 | ESG / BRSR disclosures | 15 |
 
-### Risk bands
-
+## Risk bands
 - 80–100: Low Risk
 - 60–79: Moderate Risk
 - 40–59: High Risk
 - 0–39: Very High Risk
 
-## Project structure
-
-- `data/nifty100_governance_data.csv` — input dataset
-- `src/calculate_score.py` — scoring and ranking script
-- `src/app.py` — Streamlit dashboard
-- `requirements.txt` — Python dependencies
-- `docs/methodology.md` — methodology and limitations
-
-## Important research note
-
-Governance inputs must be sourced from company filings and exchange disclosures. The scoring model is a comparative screening framework, not an official rating and not investment advice.
+This is an independent comparative research model and is not an official rating or investment advice.
 
 ## Run locally
-
 ```bash
 pip install -r requirements.txt
 python src/calculate_score.py
 streamlit run src/app.py
 ```
+
+## Deployment
+Connect this repository to Streamlit Community Cloud and set the entrypoint to `src/app.py`. Commits pushed to the connected branch can trigger redeployment.
