@@ -1,4 +1,5 @@
 from pathlib import Path
+import io
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -16,21 +17,15 @@ if CSS.exists():
 
 def score_data(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    if "Promoter_Pledge" in df:
-        df["Pledge_Score"] = pd.to_numeric(df["Promoter_Pledge"], errors="coerce").map(lambda x: pd.NA if pd.isna(x) else 30 if x == 0 else 20 if x <= 10 else 10 if x <= 25 else 0)
-    if "Auditor_Changes" in df:
-        df["Auditor_Score"] = pd.to_numeric(df["Auditor_Changes"], errors="coerce").map(lambda x: pd.NA if pd.isna(x) else 20 if x == 0 else 10 if x == 1 else 0)
-    if "Related_Party_Transactions" in df:
-        df["RPT_Score"] = df["Related_Party_Transactions"].map(lambda x: {"low": 20, "medium": 10, "high": 0}.get(str(x).strip().lower(), pd.NA))
-    if "Independent_Director_Percentage" in df:
-        df["Independent_Director_Score"] = pd.to_numeric(df["Independent_Director_Percentage"], errors="coerce").map(lambda x: pd.NA if pd.isna(x) else 15 if x >= 50 else 10 if x >= 33 else 0)
-    if "ESG_Disclosure" in df:
-        df["ESG_Score"] = df["ESG_Disclosure"].map(lambda x: {"high": 15, "medium": 8, "low": 0}.get(str(x).strip().lower(), pd.NA))
+    df["Pledge_Score"] = pd.to_numeric(df.get("Promoter_Pledge"), errors="coerce").map(lambda x: pd.NA if pd.isna(x) else 30 if x == 0 else 20 if x <= 10 else 10 if x <= 25 else 0)
+    df["Auditor_Score"] = pd.to_numeric(df.get("Auditor_Changes"), errors="coerce").map(lambda x: pd.NA if pd.isna(x) else 20 if x == 0 else 10 if x == 1 else 0)
+    df["RPT_Score"] = df.get("Related_Party_Transactions", pd.Series(index=df.index, dtype="object")).map(lambda x: {"low": 20, "medium": 10, "high": 0}.get(str(x).strip().lower(), pd.NA))
+    df["Independent_Director_Score"] = pd.to_numeric(df.get("Independent_Director_Percentage"), errors="coerce").map(lambda x: pd.NA if pd.isna(x) else 15 if x >= 50 else 10 if x >= 33 else 0)
+    df["ESG_Score"] = df.get("ESG_Disclosure", pd.Series(index=df.index, dtype="object")).map(lambda x: {"high": 15, "medium": 8, "low": 0}.get(str(x).strip().lower(), pd.NA))
     score_cols = ["Pledge_Score", "Auditor_Score", "RPT_Score", "Independent_Director_Score", "ESG_Score"]
-    if all(c in df.columns for c in score_cols):
-        df["Governance_Score"] = df[score_cols].apply(pd.to_numeric, errors="coerce").sum(axis=1, min_count=5)
-        df["Risk_Level"] = df["Governance_Score"].map(lambda x: "Incomplete data" if pd.isna(x) else "Low Risk" if x >= 80 else "Moderate Risk" if x >= 60 else "High Risk" if x >= 40 else "Very High Risk")
-        df["Rank"] = df["Governance_Score"].rank(method="min", ascending=False).where(df["Governance_Score"].notna()).astype("Int64")
+    df["Governance_Score"] = df[score_cols].apply(pd.to_numeric, errors="coerce").sum(axis=1, min_count=5)
+    df["Risk_Level"] = df["Governance_Score"].map(lambda x: "Incomplete data" if pd.isna(x) else "Low Risk" if x >= 80 else "Moderate Risk" if x >= 60 else "High Risk" if x >= 40 else "Very High Risk")
+    df["Rank"] = df["Governance_Score"].rank(method="min", ascending=False).where(df["Governance_Score"].notna()).astype("Int64")
     return df
 
 
@@ -49,11 +44,19 @@ def risk_label_counts(data):
     return counts[counts["Companies"] > 0]
 
 
+def excel_bytes(data: pd.DataFrame) -> bytes:
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        data.to_excel(writer, index=False, sheet_name="Governance Ranking")
+    return output.getvalue()
+
+
 df = load_data()
 if df.empty:
     st.error("No governance dataset was found.")
     st.stop()
 
+# Top website navigation
 st.markdown("""
 <div class="top-nav">
   <div class="brand"><span class="brand-mark">🛡</span><span><b>GovernX AI</b><small>Governance. Transparency. Trust.</small></span></div>
@@ -66,16 +69,22 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Reference-style functional sidebar
-st.sidebar.markdown("# GovernX AI")
-st.sidebar.caption("NIFTY 100 Corporate Governance Intelligence")
-st.sidebar.markdown("---")
-search_text = st.sidebar.text_input("🔎 Search company", placeholder="e.g. Reliance Industries")
-risk_order = ["Low Risk", "Moderate Risk", "High Risk", "Very High Risk", "Incomplete data"]
-levels = [x for x in risk_order if x in df.get("Risk_Level", pd.Series(dtype=str)).dropna().unique()]
-selected_levels = st.sidebar.multiselect("Risk level", levels, default=levels, placeholder="Choose options")
-min_score, max_score = st.sidebar.slider("Governance score range", 0, 100, (0, 100))
-st.sidebar.markdown('<div class="sidebar-tip"><b>💡 Tip</b><br>Use filters to narrow down companies and uncover insights.</div>', unsafe_allow_html=True)
-st.sidebar.markdown('<div class="download-panel"><b>Download data</b><br><span>Download current view</span></div>', unsafe_allow_html=True)
+with st.sidebar:
+    st.markdown("# GovernX AI")
+    st.caption("NIFTY 100 Corporate Governance Intelligence")
+    st.markdown('<div class="sidebar-title-row"><h2>Filters</h2><span>☷</span></div>', unsafe_allow_html=True)
+
+    search_text = st.text_input("⌕  Search company", placeholder="e.g. Reliance Industries", key="company_search")
+
+    risk_order = ["Low Risk", "Moderate Risk", "High Risk", "Very High Risk", "Incomplete data"]
+    levels = [x for x in risk_order if x in df["Risk_Level"].dropna().unique()]
+    selected_levels = st.multiselect("Risk level", levels, default=levels, placeholder="Choose options", key="risk_filter")
+
+    min_score, max_score = st.slider("Governance score range", 0, 100, (0, 100), key="score_filter")
+
+    st.markdown('<div class="sidebar-tip"><span class="tip-icon">💡</span><div><b>Tip: Use filters to</b><br>narrow down companies<br>and uncover insights.</div></div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="download-panel"><h3>Download data</h3><p>Download current view</p></div>', unsafe_allow_html=True)
 
 filtered = df.copy()
 if selected_levels:
@@ -83,10 +92,14 @@ if selected_levels:
 if search_text.strip():
     filtered = filtered[filtered["Company"].astype(str).str.contains(search_text.strip(), case=False, na=False)]
 filtered = filtered[(filtered["Governance_Score"].fillna(-1) >= min_score) & (filtered["Governance_Score"].fillna(-1) <= max_score)]
+
 complete = filtered[filtered["Governance_Score"].notna()].copy()
 avg = complete["Governance_Score"].mean() if len(complete) else None
 low = int((filtered["Risk_Level"] == "Low Risk").sum())
 high = int(filtered["Risk_Level"].isin(["High Risk", "Very High Risk"]).sum())
+
+st.sidebar.download_button("↓  Download CSV", filtered.to_csv(index=False).encode("utf-8"), "governx_governance_filtered.csv", "text/csv", use_container_width=True)
+st.sidebar.download_button("▥  Download Excel", excel_bytes(filtered), "governx_governance_filtered.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
 st.markdown('<div class="hero"><div class="eyebrow">NIFTY 100 • GOVERNANCE RESEARCH</div><h1>GovernX AI</h1><h2>Corporate Governance Intelligence Platform</h2><p>A content-led analytics experience for comparing governance quality, risk signals and disclosure strength across NIFTY 100 companies.</p><div class="hero-buttons"><a class="hero-btn primary" href="#dashboard">Explore Dashboard →</a><a class="hero-btn secondary" href="#methodology">View Methodology</a></div></div>', unsafe_allow_html=True)
 
@@ -129,9 +142,6 @@ st.markdown('<div id="explorer"></div><div class="section-title">NIFTY 100 compa
 show = [c for c in ["Rank", "Company", "Governance_Score", "Risk_Level", "Promoter_Pledge", "Auditor_Changes", "Related_Party_Transactions", "Independent_Director_Percentage", "ESG_Disclosure"] if c in filtered.columns]
 view = filtered.sort_values(["Governance_Score", "Company"], ascending=[False, True], na_position="last")
 st.dataframe(view[show], use_container_width=True, hide_index=True, column_config={"Governance_Score": st.column_config.ProgressColumn("Governance score", min_value=0, max_value=100, format="%d")})
-
-csv_bytes = filtered.to_csv(index=False).encode("utf-8")
-st.sidebar.download_button("⬇ Download CSV", csv_bytes, "governx_governance_filtered.csv", "text/csv", use_container_width=True)
 
 st.markdown('<div id="about"></div><div class="section-title">About GovernX AI</div><div class="section-sub">An independent research platform for comparative corporate governance screening across the NIFTY 100 universe.</div>', unsafe_allow_html=True)
 st.markdown('<div class="about-card"><b>Technology</b><br>Python · Pandas · Streamlit · Plotly<br><br><b>Purpose</b><br>Turn governance disclosures into a transparent, repeatable comparative score.<br><br><b>Research note</b><br>This framework is an independent research model, not an official rating or investment advice.</div>', unsafe_allow_html=True)
