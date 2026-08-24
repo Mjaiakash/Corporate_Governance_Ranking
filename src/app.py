@@ -6,161 +6,122 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data" / "corporate_governance_ranking.csv"
 RAW = ROOT / "data" / "nifty100_governance_data.csv"
+CSS = ROOT / "assets" / "custom.css"
 
-st.set_page_config(page_title="NIFTY 100 Governance Risk", page_icon="⚖️", layout="wide")
+st.set_page_config(page_title="GovernX AI | NIFTY 100", page_icon="⚖️", layout="wide", initial_sidebar_state="expanded")
 
-st.markdown("""
-<style>
-/* Professional soft-light background */
-.stApp {
-    background: #f5f7fb;
-    color: #172033;
-}
-.main .block-container {
-    max-width: 1450px;
-    padding-top: 1.4rem;
-    padding-bottom: 2.5rem;
-}
-[data-testid="stHeader"] {
-    background: rgba(245,247,251,0.92);
-}
-[data-testid="stSidebar"] {
-    background: #eef2f7;
-    border-right: 1px solid #dbe3ee;
-}
-[data-testid="stSidebar"] > div:first-child {
-    background: #eef2f7;
-}
-.hero {
-    padding: 26px 28px;
-    border-radius: 20px;
-    background: linear-gradient(135deg,#12213d 0%,#183d6b 55%,#1d5fa7 100%);
-    color: white;
-    margin-bottom: 22px;
-    box-shadow: 0 10px 30px rgba(18,33,61,.14);
-}
-.hero h1 { margin:0; font-size:2.2rem; letter-spacing:-.02em; }
-.hero p { margin:.45rem 0 0; color:#dbeafe; font-size:1rem; }
-.metric-card {
-    background: #ffffff;
-    border: 1px solid #e1e7f0;
-    border-radius: 16px;
-    padding: 14px 16px;
-    box-shadow: 0 6px 20px rgba(23,32,51,.06);
-}
-.stMetric {
-    background: #ffffff;
-    border: 1px solid #e1e7f0;
-    border-radius: 16px;
-    padding: 8px 12px;
-    box-shadow: 0 6px 20px rgba(23,32,51,.05);
-}
-[data-testid="stDataFrame"] {
-    border: 1px solid #dfe6ef;
-    border-radius: 14px;
-    overflow: hidden;
-    background: #ffffff;
-}
-.stPlotlyChart {
-    background: #ffffff;
-    border: 1px solid #e1e7f0;
-    border-radius: 16px;
-    padding: 4px;
-    box-shadow: 0 6px 20px rgba(23,32,51,.05);
-}
-button[kind="secondary"] {
-    border-radius: 10px;
-}
-</style>
-""", unsafe_allow_html=True)
+if CSS.exists():
+    st.markdown(CSS.read_text(encoding="utf-8"), unsafe_allow_html=True)
+
+def score_data(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    if "Promoter_Pledge" in df:
+        df["Pledge_Score"] = pd.to_numeric(df["Promoter_Pledge"], errors="coerce").map(lambda x: pd.NA if pd.isna(x) else 30 if x == 0 else 20 if x <= 10 else 10 if x <= 25 else 0)
+    if "Auditor_Changes" in df:
+        df["Auditor_Score"] = pd.to_numeric(df["Auditor_Changes"], errors="coerce").map(lambda x: pd.NA if pd.isna(x) else 20 if x == 0 else 10 if x == 1 else 0)
+    if "Related_Party_Transactions" in df:
+        df["RPT_Score"] = df["Related_Party_Transactions"].map(lambda x: {"low":20,"medium":10,"high":0}.get(str(x).strip().lower(), pd.NA))
+    if "Independent_Director_Percentage" in df:
+        df["Independent_Director_Score"] = pd.to_numeric(df["Independent_Director_Percentage"], errors="coerce").map(lambda x: pd.NA if pd.isna(x) else 15 if x >= 50 else 10 if x >= 33 else 0)
+    if "ESG_Disclosure" in df:
+        df["ESG_Score"] = df["ESG_Disclosure"].map(lambda x: {"high":15,"medium":8,"low":0}.get(str(x).strip().lower(), pd.NA))
+    score_cols = ["Pledge_Score","Auditor_Score","RPT_Score","Independent_Director_Score","ESG_Score"]
+    if all(c in df.columns for c in score_cols):
+        df["Governance_Score"] = df[score_cols].apply(pd.to_numeric, errors="coerce").sum(axis=1, min_count=5)
+        df["Risk_Level"] = df["Governance_Score"].map(lambda x: "Incomplete data" if pd.isna(x) else "Low Risk" if x >= 80 else "Moderate Risk" if x >= 60 else "High Risk" if x >= 40 else "Very High Risk")
+        df["Rank"] = df["Governance_Score"].rank(method="min", ascending=False).where(df["Governance_Score"].notna()).astype("Int64")
+    return df
 
 @st.cache_data(ttl=300)
 def load_data():
     path = DATA if DATA.exists() else RAW
-    if not path.exists(): return pd.DataFrame()
-    df = pd.read_csv(path)
-    if "Governance_Score" not in df.columns or df["Governance_Score"].isna().all():
-        def pledge(x):
-            if pd.isna(x): return pd.NA
-            x=float(x); return 30 if x==0 else 20 if x<=10 else 10 if x<=25 else 0
-        def auditor(x):
-            if pd.isna(x): return pd.NA
-            x=float(x); return 20 if x==0 else 10 if x==1 else 0
-        def rpt(x):
-            if pd.isna(x): return pd.NA
-            return {"low":20,"medium":10,"high":0}.get(str(x).strip().lower(),pd.NA)
-        def independent(x):
-            if pd.isna(x): return pd.NA
-            x=float(x); return 15 if x>=50 else 10 if x>=33 else 0
-        def esg(x):
-            if pd.isna(x): return pd.NA
-            return {"high":15,"medium":8,"low":0}.get(str(x).strip().lower(),pd.NA)
-        df["Pledge_Score"]=df["Promoter_Pledge"].apply(pledge)
-        df["Auditor_Score"]=df["Auditor_Changes"].apply(auditor)
-        df["RPT_Score"]=df["Related_Party_Transactions"].apply(rpt)
-        df["Independent_Director_Score"]=df["Independent_Director_Percentage"].apply(independent)
-        df["ESG_Score"]=df["ESG_Disclosure"].apply(esg)
-        cols=["Pledge_Score","Auditor_Score","RPT_Score","Independent_Director_Score","ESG_Score"]
-        df["Governance_Score"]=df[cols].sum(axis=1,min_count=5)
-        df["Risk_Level"]=df["Governance_Score"].apply(lambda x:"Incomplete data" if pd.isna(x) else "Low Risk" if x>=80 else "Moderate Risk" if x>=60 else "High Risk" if x>=40 else "Very High Risk")
-        df["Rank"]=df["Governance_Score"].rank(method="min",ascending=False).where(df["Governance_Score"].notna()).astype("Int64")
-    return df
+    if not path.exists():
+        return pd.DataFrame()
+    return score_data(pd.read_csv(path))
 
-df=load_data()
-st.markdown('<div class="hero"><h1>Corporate Governance Risk Score</h1><p>NIFTY 100 comparative governance screening dashboard</p></div>',unsafe_allow_html=True)
+# ----- Hero -----
+st.markdown('''<div class="hero"><div class="eyebrow">NIFTY 100 • Governance Research</div><h1>GovernX AI</h1><p>Corporate Governance Intelligence Platform — a content-led analytics experience for comparing governance quality, risk signals and disclosure strength across NIFTY 100 companies.</p></div>''', unsafe_allow_html=True)
+
+df = load_data()
 if df.empty:
-    st.error("No governance dataset was found."); st.stop()
+    st.error("No governance dataset was found.")
+    st.stop()
 
-st.sidebar.markdown("## Filters")
-search=st.sidebar.text_input("🔎 Search company",placeholder="Search company name")
-levels=[x for x in ["Low Risk","Moderate Risk","High Risk","Very High Risk","Incomplete data"] if x in df["Risk_Level"].dropna().unique()]
-selected=st.sidebar.multiselect("Risk level",levels,default=levels)
-industries=sorted(df["Industry"].dropna().astype(str).unique()) if "Industry" in df else []
-selected_industry=st.sidebar.multiselect("Industry",industries,placeholder="All industries")
-min_score,max_score=st.sidebar.slider("Governance score",0,100,(0,100))
-sort_by=st.sidebar.selectbox("Sort by",["Governance Score","Company","Industry"])
-ascending=st.sidebar.checkbox("Ascending",False)
+# ----- Sidebar -----
+st.sidebar.markdown("# GovernX AI")
+st.sidebar.caption("NIFTY 100 Corporate Governance Intelligence")
+search = st.sidebar.text_input("🔎 Search company", placeholder="e.g. Reliance Industries")
+risk_order = ["Low Risk","Moderate Risk","High Risk","Very High Risk","Incomplete data"]
+levels = [x for x in risk_order if x in df.get("Risk_Level", pd.Series(dtype=str)).dropna().unique()]
+selected_levels = st.sidebar.multiselect("Risk level", levels, default=levels)
+industries = sorted(df["Industry"].dropna().astype(str).unique()) if "Industry" in df else []
+selected_industry = st.sidebar.multiselect("Industry", industries, placeholder="All industries")
+min_score, max_score = st.sidebar.slider("Governance score", 0, 100, (0, 100))
+if st.sidebar.button("Reset filters", use_container_width=True):
+    st.rerun()
 
-filtered=df.copy()
-if selected: filtered=filtered[filtered["Risk_Level"].isin(selected)]
-if search: filtered=filtered[filtered["Company"].astype(str).str.contains(search,case=False,na=False)]
-if selected_industry: filtered=filtered[filtered["Industry"].isin(selected_industry)]
-filtered=filtered[(filtered["Governance_Score"].fillna(-1)>=min_score)&(filtered["Governance_Score"].fillna(-1)<=max_score)]
-sort_col={"Governance Score":"Governance_Score","Company":"Company","Industry":"Industry"}[sort_by]
-filtered=filtered.sort_values(sort_col,ascending=ascending,na_position="last")
-complete=filtered[filtered["Governance_Score"].notna()]
+filtered = df.copy()
+if selected_levels:
+    filtered = filtered[filtered["Risk_Level"].isin(selected_levels)]
+if search:
+    filtered = filtered[filtered["Company"].astype(str).str.contains(search, case=False, na=False)]
+if selected_industry:
+    filtered = filtered[filtered["Industry"].isin(selected_industry)]
+filtered = filtered[(filtered["Governance_Score"].fillna(-1) >= min_score) & (filtered["Governance_Score"].fillna(-1) <= max_score)]
+complete = filtered[filtered["Governance_Score"].notna()].copy()
 
-avg=complete["Governance_Score"].mean() if len(complete) else None
-low=int((filtered["Risk_Level"]=="Low Risk").sum())
-high=int(filtered["Risk_Level"].isin(["High Risk","Very High Risk"]).sum())
-c1,c2,c3,c4=st.columns(4)
-c1.metric("Companies",len(filtered)); c2.metric("Average score",f"{avg:.1f}" if avg is not None else "—"); c3.metric("Low risk",low); c4.metric("High / very high",high)
+# ----- Intro content -----
+st.markdown('<div class="section-title">Why corporate governance matters</div><div class="section-sub">Governance quality can influence transparency, accountability, capital allocation and long-term stakeholder confidence.</div>', unsafe_allow_html=True)
+cards = st.columns(3)
+for col, title, text in zip(cards, ["🛡 Accountability", "📊 Transparency", "🌱 Sustainable value"], ["Strong oversight helps align management decisions with shareholder and stakeholder interests.", "Clear disclosures make governance risks easier to identify and compare across companies.", "Board quality, controls and ESG practices can support resilient long-term business decisions."]):
+    col.markdown(f'<div class="info-card"><h3>{title}</h3><p>{text}</p></div>', unsafe_allow_html=True)
 
-st.subheader("Governance overview")
-a,b=st.columns(2)
+# ----- KPI row -----
+avg = complete["Governance_Score"].mean() if len(complete) else None
+low = int((filtered["Risk_Level"] == "Low Risk").sum())
+high = int(filtered["Risk_Level"].isin(["High Risk","Very High Risk"]).sum())
+c1,c2,c3,c4 = st.columns(4)
+c1.markdown(f'<div class="feature"><div class="num">{len(filtered):,}</div><div class="label">Companies in view</div></div>', unsafe_allow_html=True)
+c2.markdown(f'<div class="feature"><div class="num">{avg:.1f}</div><div class="label">Average governance score</div></div>' if avg is not None else '<div class="feature"><div class="num">—</div><div class="label">Average governance score</div></div>', unsafe_allow_html=True)
+c3.markdown(f'<div class="feature"><div class="num">{low}</div><div class="label">Low risk companies</div></div>', unsafe_allow_html=True)
+c4.markdown(f'<div class="feature"><div class="num">{high}</div><div class="label">High / very high risk</div></div>', unsafe_allow_html=True)
+
+# ----- Methodology -----
+st.markdown('<div class="section-title">Scoring methodology</div><div class="section-sub">A transparent 100-point comparative research model. Higher scores indicate stronger governance characteristics within this framework.</div>', unsafe_allow_html=True)
+mcols = st.columns(5)
+for col, num, label in zip(mcols, ["30%","20%","20%","15%","15%"], ["Promoter pledge","Auditor changes","Related-party transactions","Independent directors","ESG / BRSR"]):
+    col.markdown(f'<div class="kpi-wrap"><b style="font-size:1.45rem;color:#2563eb">{num}</b><br><span class="small-note">{label}</span></div>', unsafe_allow_html=True)
+
+# ----- Analytics -----
+st.markdown('<div class="section-title">Governance analytics</div>', unsafe_allow_html=True)
+a,b = st.columns(2)
 with a:
     if len(complete):
-        rc=filtered["Risk_Level"].value_counts().rename_axis("Risk Level").reset_index(name="Companies")
-        fig=px.pie(rc,names="Risk Level",values="Companies",hole=.58,title="Risk classification")
-        fig.update_layout(paper_bgcolor="#ffffff",plot_bgcolor="#ffffff")
-        st.plotly_chart(fig,use_container_width=True)
-    else: st.info("No completed scores match the current filters.")
+        rc = filtered["Risk_Level"].value_counts().rename_axis("Risk Level").reset_index(name="Companies")
+        fig = px.pie(rc, names="Risk Level", values="Companies", hole=.62, title="Risk classification")
+        fig.update_layout(margin=dict(l=10,r=10,t=55,b=10), paper_bgcolor="white", plot_bgcolor="white")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Complete governance scores are required for analytics.")
 with b:
     if len(complete):
-        top=complete.sort_values("Governance_Score",ascending=False).head(10)
-        fig=px.bar(top.sort_values("Governance_Score"),x="Governance_Score",y="Company",orientation="h",text="Governance_Score",title="Top 10 governance scores")
+        top = complete.nlargest(10, "Governance_Score").sort_values("Governance_Score")
+        fig = px.bar(top, x="Governance_Score", y="Company", orientation="h", text="Governance_Score", title="Top 10 governance scores")
         fig.update_traces(textposition="outside")
-        fig.update_layout(xaxis_title="Score",yaxis_title="",paper_bgcolor="#ffffff",plot_bgcolor="#ffffff")
-        st.plotly_chart(fig,use_container_width=True)
+        fig.update_layout(margin=dict(l=10,r=40,t=55,b=10), xaxis_title="Score", yaxis_title="", paper_bgcolor="white", plot_bgcolor="white")
+        st.plotly_chart(fig, use_container_width=True)
 
 if "Industry" in filtered and len(complete):
-    sector=complete.groupby("Industry",dropna=False)["Governance_Score"].mean().reset_index().sort_values("Governance_Score")
-    fig=px.bar(sector,x="Governance_Score",y="Industry",orientation="h",text_auto=".1f",title="Average governance score by industry")
-    fig.update_layout(xaxis_title="Average score",yaxis_title="",paper_bgcolor="#ffffff",plot_bgcolor="#ffffff")
-    st.plotly_chart(fig,use_container_width=True)
+    sector = complete.groupby("Industry", dropna=False)["Governance_Score"].mean().reset_index().sort_values("Governance_Score")
+    fig = px.bar(sector, x="Governance_Score", y="Industry", orientation="h", text_auto=".1f", title="Average governance score by industry")
+    fig.update_layout(margin=dict(l=10,r=30,t=55,b=10), xaxis_title="Average score", yaxis_title="", paper_bgcolor="white", plot_bgcolor="white")
+    st.plotly_chart(fig, use_container_width=True)
 
-st.subheader("NIFTY 100 governance ranking")
-show=[c for c in ["Rank","Company","Industry","Governance_Score","Risk_Level","Promoter_Pledge","Auditor_Changes","Related_Party_Transactions","Independent_Director_Percentage","ESG_Disclosure"] if c in filtered.columns]
-st.dataframe(filtered[show],use_container_width=True,hide_index=True,column_config={"Governance_Score":st.column_config.NumberColumn("Score",format="%.0f")})
-st.download_button("⬇ Download filtered CSV",filtered.to_csv(index=False).encode("utf-8"),"corporate_governance_filtered.csv","text/csv")
-st.divider(); st.caption("Comparative research model: pledge 30, auditor changes 20, related-party transactions 20, independent directors 15, ESG/BRSR disclosure 15. Not an official rating or investment advice.")
+# ----- Ranking -----
+st.markdown('<div class="section-title">NIFTY 100 company explorer</div><div class="section-sub">Search and filter the universe, then download the current view for further analysis.</div>', unsafe_allow_html=True)
+show = [c for c in ["Rank","Company","Industry","Governance_Score","Risk_Level","Promoter_Pledge","Auditor_Changes","Related_Party_Transactions","Independent_Director_Percentage","ESG_Disclosure"] if c in filtered.columns]
+st.dataframe(filtered.sort_values(["Governance_Score","Company"], ascending=[False,True], na_position="last")[show], use_container_width=True, hide_index=True, column_config={"Governance_Score": st.column_config.ProgressColumn("Governance score", min_value=0, max_value=100, format="%d")})
+st.download_button("⬇ Download filtered CSV", filtered.to_csv(index=False).encode("utf-8"), "governx_governance_filtered.csv", "text/csv")
+
+# ----- Footer -----
+st.markdown('<div class="footer"><b>GovernX AI</b><br>Corporate Governance Intelligence Platform · NIFTY 100 Comparative Research Model<br><span class="small-note">This framework is an independent research model, not an official rating or investment advice.</span></div>', unsafe_allow_html=True)
