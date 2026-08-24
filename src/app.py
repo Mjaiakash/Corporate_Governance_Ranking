@@ -8,7 +8,7 @@ DATA = ROOT / "data" / "corporate_governance_ranking.csv"
 RAW = ROOT / "data" / "nifty100_governance_data.csv"
 CSS = ROOT / "assets" / "custom.css"
 
-st.set_page_config(page_title="GovernX AI | NIFTY 100", page_icon="⚖️", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="GovernX AI | NIFTY 100", page_icon="⚖️", layout="wide", initial_sidebar_state="collapsed")
 
 if CSS.exists():
     st.markdown(CSS.read_text(encoding="utf-8"), unsafe_allow_html=True)
@@ -48,37 +48,45 @@ def risk_label_counts(data):
     counts.columns = ["Risk Level", "Companies"]
     return counts[counts["Companies"] > 0]
 
-st.markdown(
-    '<div class="hero"><div class="eyebrow">NIFTY 100 • Governance Research</div>'
-    '<h1>GovernX AI</h1>'
-    '<p>Corporate Governance Intelligence Platform — a content-led analytics experience for comparing governance quality, risk signals and disclosure strength across NIFTY 100 companies.</p></div>',
-    unsafe_allow_html=True,
-)
 
 df = load_data()
 if df.empty:
     st.error("No governance dataset was found.")
     st.stop()
 
-st.sidebar.markdown("# GovernX AI")
-st.sidebar.caption("NIFTY 100 Corporate Governance Intelligence")
-search_text = st.sidebar.text_input("🔎 Search company", placeholder="Type the first letters of a company")
+# Website-style top navigation. Streamlit's native sidebar is intentionally not used.
+st.markdown("""
+<div class="top-nav">
+  <div class="brand"><span class="brand-mark">🛡</span><span><b>GovernX AI</b><small>Governance. Transparency. Trust.</small></span></div>
+  <div class="nav-links">
+    <a href="#home">Home</a>
+    <a href="#dashboard">Dashboard</a>
+    <a href="#explorer">Company Explorer</a>
+    <a href="#analytics">Analytics</a>
+    <a href="#methodology">Methodology</a>
+    <a href="#about">About</a>
+  </div>
+  <div class="nav-actions">☼</div>
+</div>
+<div id="home"></div>
+""", unsafe_allow_html=True)
 
-company_names = sorted(df["Company"].dropna().astype(str).unique().tolist())
-needle = search_text.strip().lower()
-suggestions = [name for name in company_names if needle and needle in name.lower()][:12]
-if needle:
-    if suggestions:
-        st.sidebar.markdown("**Matching companies**")
-        for name in suggestions:
-            st.sidebar.caption(f"• {name}")
-    else:
-        st.sidebar.info("No matching company found.")
+# Image-led hero
+st.markdown(
+    '<div class="hero"><div class="eyebrow">NIFTY 100 • GOVERNANCE RESEARCH</div>'
+    '<h1>GovernX AI</h1><h2>Corporate Governance Intelligence Platform</h2>'
+    '<p>A content-led analytics experience for comparing governance quality, risk signals and disclosure strength across NIFTY 100 companies.</p>'
+    '<div class="hero-buttons"><a class="hero-btn primary" href="#dashboard">Explore Dashboard →</a><a class="hero-btn secondary" href="#methodology">View Methodology</a></div></div>',
+    unsafe_allow_html=True,
+)
 
+# Main filters replace the old sidebar controls.
+st.markdown('<div class="section-title">Explore the NIFTY 100</div><div class="section-sub">Search, filter and compare governance results.</div>', unsafe_allow_html=True)
+search_text = st.text_input("Search company", placeholder="e.g. Reliance Industries")
 risk_order = ["Low Risk", "Moderate Risk", "High Risk", "Very High Risk", "Incomplete data"]
 levels = [x for x in risk_order if x in df.get("Risk_Level", pd.Series(dtype=str)).dropna().unique()]
-selected_levels = st.sidebar.multiselect("Risk level", levels, default=levels)
-min_score, max_score = st.sidebar.slider("Governance score", 0, 100, (0, 100))
+selected_levels = st.multiselect("Risk level", levels, default=levels)
+min_score, max_score = st.slider("Governance score", 0, 100, (0, 100))
 
 filtered = df.copy()
 if selected_levels:
@@ -86,7 +94,6 @@ if selected_levels:
 if search_text.strip():
     filtered = filtered[filtered["Company"].astype(str).str.contains(search_text.strip(), case=False, na=False)]
 filtered = filtered[(filtered["Governance_Score"].fillna(-1) >= min_score) & (filtered["Governance_Score"].fillna(-1) <= max_score)]
-
 complete = filtered[filtered["Governance_Score"].notna()].copy()
 avg = complete["Governance_Score"].mean() if len(complete) else None
 low = int((filtered["Risk_Level"] == "Low Risk").sum())
@@ -97,6 +104,7 @@ cards = st.columns(3)
 for col, title, text in zip(cards, ["🛡 Accountability", "📊 Transparency", "🌱 Sustainable value"], ["Strong oversight helps align management decisions with shareholder and stakeholder interests.", "Clear disclosures make governance risks easier to identify and compare across companies.", "Board quality, controls and ESG practices can support resilient long-term business decisions."]):
     col.markdown(f'<div class="info-card"><h3>{title}</h3><p>{text}</p></div>', unsafe_allow_html=True)
 
+st.markdown('<div id="dashboard"></div>', unsafe_allow_html=True)
 st.markdown('<div class="section-title">Governance snapshot</div>', unsafe_allow_html=True)
 c1, c2, c3, c4 = st.columns(4)
 c1.markdown(f'<div class="feature feature-teal"><div class="num">{len(filtered):,}</div><div class="label">Companies in view</div></div>', unsafe_allow_html=True)
@@ -104,11 +112,13 @@ c2.markdown(f'<div class="feature feature-violet"><div class="num">{avg:.1f}</di
 c3.markdown(f'<div class="feature feature-amber"><div class="num">{low}</div><div class="label">Low risk companies</div></div>', unsafe_allow_html=True)
 c4.markdown(f'<div class="feature feature-coral"><div class="num">{high}</div><div class="label">High / very high risk</div></div>', unsafe_allow_html=True)
 
+st.markdown('<div id="methodology"></div>', unsafe_allow_html=True)
 st.markdown('<div class="section-title">Scoring methodology</div><div class="section-sub">A transparent 100-point comparative research model. Higher scores indicate stronger governance characteristics within this framework.</div>', unsafe_allow_html=True)
 mcols = st.columns(5)
 for col, num, label in zip(mcols, ["30%","20%","20%","15%","15%"], ["Promoter pledge","Auditor changes","Related-party transactions","Independent directors","ESG / BRSR"]):
     col.markdown(f'<div class="kpi-wrap"><b>{num}</b><br><span class="small-note">{label}</span></div>', unsafe_allow_html=True)
 
+st.markdown('<div id="analytics"></div>', unsafe_allow_html=True)
 st.markdown('<div class="section-title">Governance analytics</div>', unsafe_allow_html=True)
 a, b = st.columns(2)
 with a:
@@ -127,10 +137,15 @@ with b:
         fig.update_layout(margin=dict(l=10,r=40,t=55,b=10), xaxis_title="Score", yaxis_title="", paper_bgcolor="white", plot_bgcolor="white")
         st.plotly_chart(fig, use_container_width=True)
 
-st.markdown('<div class="section-title">NIFTY 100 company explorer</div><div class="section-sub">Search and filter the universe, then download the current view for further analysis.</div>', unsafe_allow_html=True)
+st.markdown('<div id="explorer"></div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">NIFTY 100 company explorer</div><div class="section-sub">Search and compare the governance universe with the filters above.</div>', unsafe_allow_html=True)
 show = [c for c in ["Rank","Company","Governance_Score","Risk_Level","Promoter_Pledge","Auditor_Changes","Related_Party_Transactions","Independent_Director_Percentage","ESG_Disclosure"] if c in filtered.columns]
 view = filtered.sort_values(["Governance_Score","Company"], ascending=[False, True], na_position="last")
 st.dataframe(view[show], use_container_width=True, hide_index=True, column_config={"Governance_Score": st.column_config.ProgressColumn("Governance score", min_value=0, max_value=100, format="%d")})
 st.download_button("⬇ Download filtered CSV", filtered.to_csv(index=False).encode("utf-8"), "governx_governance_filtered.csv", "text/csv")
 
-st.markdown('<div class="footer"><b>GovernX AI</b><br>Corporate Governance Intelligence Platform · NIFTY 100 Comparative Research Model<br><span class="small-note">This framework is an independent research model, not an official rating or investment advice.</span></div>', unsafe_allow_html=True)
+st.markdown('<div id="about"></div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">About GovernX AI</div><div class="section-sub">An independent research platform for comparative corporate governance screening across the NIFTY 100 universe.</div>', unsafe_allow_html=True)
+st.markdown('<div class="about-card"><b>Technology</b><br>Python · Pandas · Streamlit · Plotly<br><br><b>Purpose</b><br>Turn governance disclosures into a transparent, repeatable comparative score.<br><br><b>Research note</b><br>This framework is an independent research model, not an official rating or investment advice.</div>', unsafe_allow_html=True)
+
+st.markdown('<div class="footer"><b>GovernX AI</b><br>Corporate Governance Intelligence Platform · NIFTY 100 Comparative Research Model</div>', unsafe_allow_html=True)
