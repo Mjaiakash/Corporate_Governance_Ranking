@@ -48,8 +48,6 @@ def risk_label_counts(data):
     counts.columns = ["Risk Level", "Companies"]
     return counts[counts["Companies"] > 0]
 
-
-# ---------------- Hero ----------------
 st.markdown(
     '<div class="hero"><div class="eyebrow">NIFTY 100 • Governance Research</div>'
     '<h1>GovernX AI</h1>'
@@ -62,12 +60,10 @@ if df.empty:
     st.error("No governance dataset was found.")
     st.stop()
 
-# ---------------- Sidebar ----------------
 st.sidebar.markdown("# GovernX AI")
 st.sidebar.caption("NIFTY 100 Corporate Governance Intelligence")
 search_text = st.sidebar.text_input("🔎 Search company", placeholder="Type the first letters of a company")
 
-# Show a company suggestion list as soon as the user enters 1+ characters.
 company_names = sorted(df["Company"].dropna().astype(str).unique().tolist())
 needle = search_text.strip().lower()
 suggestions = [name for name in company_names if needle and needle in name.lower()][:12]
@@ -75,49 +71,27 @@ if needle:
     if suggestions:
         st.sidebar.markdown("**Matching companies**")
         for name in suggestions:
-            industry = df.loc[df["Company"].astype(str).eq(name), "Industry"].iloc[0] if "Industry" in df and not df.loc[df["Company"].astype(str).eq(name), "Industry"].empty else "Industry unavailable"
-            st.sidebar.caption(f"• {name}  ·  {industry}")
+            st.sidebar.caption(f"• {name}")
     else:
         st.sidebar.info("No matching company found.")
 
 risk_order = ["Low Risk", "Moderate Risk", "High Risk", "Very High Risk", "Incomplete data"]
 levels = [x for x in risk_order if x in df.get("Risk_Level", pd.Series(dtype=str)).dropna().unique()]
 selected_levels = st.sidebar.multiselect("Risk level", levels, default=levels)
-industries = sorted(df["Industry"].dropna().astype(str).unique()) if "Industry" in df else []
-selected_industry = st.sidebar.multiselect("Industry", industries, placeholder="All industries")
 min_score, max_score = st.sidebar.slider("Governance score", 0, 100, (0, 100))
 
-# Filter form keeps the sidebar open while users configure criteria.
-with st.sidebar.form("apply_filters_form"):
-    apply_filters = st.form_submit_button("Apply filters", use_container_width=True, type="primary")
-    close_sidebar_after_apply = st.checkbox("Close sidebar after applying", value=True)
-
-# The visible result set is calculated from the current widget values. The submit button is included
-# to match the requested interaction model; the results update after the button is pressed.
 filtered = df.copy()
 if selected_levels:
     filtered = filtered[filtered["Risk_Level"].isin(selected_levels)]
 if search_text.strip():
     filtered = filtered[filtered["Company"].astype(str).str.contains(search_text.strip(), case=False, na=False)]
-if selected_industry:
-    filtered = filtered[filtered["Industry"].isin(selected_industry)]
 filtered = filtered[(filtered["Governance_Score"].fillna(-1) >= min_score) & (filtered["Governance_Score"].fillna(-1) <= max_score)]
-
-# ---------------- Mobile-friendly close behaviour ----------------
-if apply_filters and close_sidebar_after_apply:
-    # Streamlit does not expose a supported Python API to programmatically collapse the native sidebar.
-    # Inject a small browser-side click that targets Streamlit's sidebar collapse control.
-    st.markdown(
-        '<script>window.parent.document.querySelectorAll("button").forEach(function(b){if((b.getAttribute("aria-label")||"").toLowerCase().includes("close sidebar")){b.click();}});</script>',
-        unsafe_allow_html=True,
-    )
 
 complete = filtered[filtered["Governance_Score"].notna()].copy()
 avg = complete["Governance_Score"].mean() if len(complete) else None
 low = int((filtered["Risk_Level"] == "Low Risk").sum())
 high = int(filtered["Risk_Level"].isin(["High Risk", "Very High Risk"]).sum())
 
-# ---------------- Content ----------------
 st.markdown('<div class="section-title">Why corporate governance matters</div><div class="section-sub">Governance quality can influence transparency, accountability, capital allocation and long-term stakeholder confidence.</div>', unsafe_allow_html=True)
 cards = st.columns(3)
 for col, title, text in zip(cards, ["🛡 Accountability", "📊 Transparency", "🌱 Sustainable value"], ["Strong oversight helps align management decisions with shareholder and stakeholder interests.", "Clear disclosures make governance risks easier to identify and compare across companies.", "Board quality, controls and ESG practices can support resilient long-term business decisions."]):
@@ -125,17 +99,16 @@ for col, title, text in zip(cards, ["🛡 Accountability", "📊 Transparency", 
 
 st.markdown('<div class="section-title">Governance snapshot</div>', unsafe_allow_html=True)
 c1, c2, c3, c4 = st.columns(4)
-c1.markdown(f'<div class="feature"><div class="num">{len(filtered):,}</div><div class="label">Companies in view</div></div>', unsafe_allow_html=True)
-c2.markdown(f'<div class="feature"><div class="num">{avg:.1f}</div><div class="label">Average governance score</div></div>' if avg is not None else '<div class="feature"><div class="num">—</div><div class="label">Average governance score</div></div>', unsafe_allow_html=True)
-c3.markdown(f'<div class="feature"><div class="num">{low}</div><div class="label">Low risk companies</div></div>', unsafe_allow_html=True)
-c4.markdown(f'<div class="feature"><div class="num">{high}</div><div class="label">High / very high risk</div></div>', unsafe_allow_html=True)
+c1.markdown(f'<div class="feature feature-teal"><div class="num">{len(filtered):,}</div><div class="label">Companies in view</div></div>', unsafe_allow_html=True)
+c2.markdown(f'<div class="feature feature-violet"><div class="num">{avg:.1f}</div><div class="label">Average governance score</div></div>' if avg is not None else '<div class="feature feature-violet"><div class="num">—</div><div class="label">Average governance score</div></div>', unsafe_allow_html=True)
+c3.markdown(f'<div class="feature feature-amber"><div class="num">{low}</div><div class="label">Low risk companies</div></div>', unsafe_allow_html=True)
+c4.markdown(f'<div class="feature feature-coral"><div class="num">{high}</div><div class="label">High / very high risk</div></div>', unsafe_allow_html=True)
 
 st.markdown('<div class="section-title">Scoring methodology</div><div class="section-sub">A transparent 100-point comparative research model. Higher scores indicate stronger governance characteristics within this framework.</div>', unsafe_allow_html=True)
 mcols = st.columns(5)
 for col, num, label in zip(mcols, ["30%","20%","20%","15%","15%"], ["Promoter pledge","Auditor changes","Related-party transactions","Independent directors","ESG / BRSR"]):
-    col.markdown(f'<div class="kpi-wrap"><b style="font-size:1.45rem;color:#2563eb">{num}</b><br><span class="small-note">{label}</span></div>', unsafe_allow_html=True)
+    col.markdown(f'<div class="kpi-wrap"><b>{num}</b><br><span class="small-note">{label}</span></div>', unsafe_allow_html=True)
 
-# ---------------- Analytics ----------------
 st.markdown('<div class="section-title">Governance analytics</div>', unsafe_allow_html=True)
 a, b = st.columns(2)
 with a:
@@ -154,14 +127,8 @@ with b:
         fig.update_layout(margin=dict(l=10,r=40,t=55,b=10), xaxis_title="Score", yaxis_title="", paper_bgcolor="white", plot_bgcolor="white")
         st.plotly_chart(fig, use_container_width=True)
 
-if "Industry" in filtered and len(complete):
-    sector = complete.groupby("Industry", dropna=False)["Governance_Score"].mean().reset_index().sort_values("Governance_Score")
-    fig = px.bar(sector, x="Governance_Score", y="Industry", orientation="h", text_auto=".1f", title="Average governance score by industry")
-    fig.update_layout(margin=dict(l=10,r=30,t=55,b=10), xaxis_title="Average score", yaxis_title="", paper_bgcolor="white", plot_bgcolor="white")
-    st.plotly_chart(fig, use_container_width=True)
-
 st.markdown('<div class="section-title">NIFTY 100 company explorer</div><div class="section-sub">Search and filter the universe, then download the current view for further analysis.</div>', unsafe_allow_html=True)
-show = [c for c in ["Rank","Company","Industry","Governance_Score","Risk_Level","Promoter_Pledge","Auditor_Changes","Related_Party_Transactions","Independent_Director_Percentage","ESG_Disclosure"] if c in filtered.columns]
+show = [c for c in ["Rank","Company","Governance_Score","Risk_Level","Promoter_Pledge","Auditor_Changes","Related_Party_Transactions","Independent_Director_Percentage","ESG_Disclosure"] if c in filtered.columns]
 view = filtered.sort_values(["Governance_Score","Company"], ascending=[False, True], na_position="last")
 st.dataframe(view[show], use_container_width=True, hide_index=True, column_config={"Governance_Score": st.column_config.ProgressColumn("Governance score", min_value=0, max_value=100, format="%d")})
 st.download_button("⬇ Download filtered CSV", filtered.to_csv(index=False).encode("utf-8"), "governx_governance_filtered.csv", "text/csv")
