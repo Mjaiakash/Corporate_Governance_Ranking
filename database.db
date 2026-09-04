@@ -1,1 +1,0 @@
-SQLite database placeholder. The application creates and initializes database.db automatically on first run if the file is not present.
